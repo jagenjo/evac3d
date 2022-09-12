@@ -1,0 +1,232 @@
+<style>*{margin:0;padding:0}</style>
+<canvas id="C" style="background:black"></canvas>
+<script src="../compo/micro3d.js"></script>
+<script>
+var c=C.getContext("2d");
+var bgimg=new Image();
+bgimg.src="barcelona map.png"
+var cam=[0,0,1]
+INPUT(C)
+var prev=TIME(),now=prev,dt=0;
+var lines=[],areas=[]
+var selected_line=null;
+var last_line=null;
+var selected_prop=0;
+var WMOUSE=[0,0],LWMOUSE=[0,0]
+var mode=1
+
+function loop()
+{
+    now=TIME(),dt=(now-prev),prev=now;
+    C.width=BODY.offsetWidth;C.height=BODY.offsetHeight;
+    requestAnimationFrame(loop);
+
+    c.save();
+    c.translate(cam[0],cam[1])
+    c.scale(cam[2],cam[2])
+    c.globalAlpha=0.2
+    c.drawImage(bgimg,0,0)
+    c.globalAlpha=1
+    for(var i=0;i<lines.length;++i)
+    {
+        var line=lines[i];
+        c.strokeStyle=selected_line==line?"#FFF":"#CCC"
+        c.lineWidth=line.width;
+        c.beginPath();
+        c.moveTo(line.start[0],line.start[1])
+        c.lineTo(line.end[0],line.end[1])
+        c.stroke();
+        c.fillStyle="#0F0"
+        c.fillRect(line.start[0]-2,line.start[1]-2,4,4)
+        c.fillStyle="#F00"
+        c.fillRect(line.end[0]-2,line.end[1]-2,4,4)
+    }
+    c.restore()
+
+    c.fillStyle="white"
+    c.fillText("LINES "+lines.length,20,20)
+    c.fillText("POS: "+(WMOUSE[0]|0)+","+(WMOUSE[1]|0),10,C.height-10)
+
+    var s=300*cam[2]*(KEYS["ShiftLeft"]?10:1);
+    var centerx=(C.width/2-cam[0])/cam[2];
+    var centery=(C.height/2-cam[1])/cam[2];
+    if(KEYS["PageUp"]) {
+        cam[2]*=1.03;
+        cam[0]+=(((C.width/2-cam[0])/cam[2])-centerx)*cam[2];
+        cam[1]+=(((C.height/2-cam[1])/cam[2])-centery)*cam[2];
+    }
+    if(KEYS["PageDown"]) {
+        cam[2]/=1.03;
+        cam[0]+=(((C.width/2-cam[0])/cam[2])-centerx)*cam[2];
+        cam[1]+=(((C.height/2-cam[1])/cam[2])-centery)*cam[2];
+    }
+    if(KEYS["ArrowRight"]) cam[0]-=dt*s
+    if(KEYS["ArrowLeft"]) cam[0]+=dt*s
+    if(KEYS["ArrowUp"]) cam[1]+=dt*s
+    if(KEYS["ArrowDown"]) cam[1]-=dt*s
+}
+
+function DIST2D(a,b){ return SQRT((b[0]-a[0])*(b[0]-a[0])+(b[1]-a[1])*(b[1]-a[1]))}
+
+function nearestPoint(wm)
+{
+    var mindist=1000000,line=null,prop=-1;
+    for(var i=0;i<lines.length;++i)
+    {
+        var l=lines[i];
+        var d=DIST2D(wm,l.start);
+        if(d<mindist && d<(10/cam[2]))
+        {
+            mindist=d;
+            line=l;
+            prop=0;
+        }
+        d=DIST2D(wm,l.end);
+        if(d<mindist && d<(10/cam[2]))
+        {
+            mindist=d;
+            line=l;
+            prop=1;
+        }
+    }
+
+    if(!line)
+        return null;
+    return {line, prop}
+}
+
+function ONMOUSE(e)
+{
+    WMOUSE[0]=ROUND((MOUSE.pos[0]-cam[0])/cam[2]);
+    WMOUSE[1]=ROUND((MOUSE.pos[1]-cam[1])/cam[2]);
+    if(e.type=="mousedown")
+    {
+        var nearest=nearestPoint(WMOUSE);
+        if(nearest&&!e.shiftKey)
+        {
+            selected_line=last_line=nearest.line;
+            selected_prop=nearest.prop;
+            if(selected_prop==0)
+                selected_line.start=WMOUSE.concat();
+            else if(selected_prop==1)
+                selected_line.end=WMOUSE.concat();
+        }
+        else
+        {
+            if(mode==1)
+            selected_line={
+                width:1,
+                start:WMOUSE.concat(),
+                end:WMOUSE.concat()
+            };
+            selected_prop=1;
+            lines.push(selected_line)
+        }
+    }
+    else if(e.type=="mousemove")
+    {
+        if(KEYS["Space"])
+        {
+            cam[0]+=MOUSE.delta[0];
+            cam[1]+=MOUSE.delta[1];
+            LWMOUSE[0]=WMOUSE[0];
+            LWMOUSE[1]=WMOUSE[1];
+        }
+        if(selected_line)
+        {
+            if(selected_prop==0)
+                selected_line.start=WMOUSE.concat();
+            else if(selected_prop==1)
+                selected_line.end=WMOUSE.concat();
+        }
+    }
+    else if(e.type=="mouseup")
+    {
+        if(selected_line)
+        {
+            if(selected_prop==0)
+                    selected_line.start=WMOUSE.concat();
+                else if(selected_prop==1)
+                    selected_line.end=WMOUSE.concat();
+        }
+        last_line=selected_line
+        selected_line=null;
+    }
+}
+
+function ONKEY(e)
+{
+    if(e.type=="keydown")
+        return;
+    if(e.code=="Digit1")
+        mode=1
+    if(e.code=="Digit2")
+        mode=2
+    if(e.code=="KeyS" && e.ctrlKey)
+    {
+        lines.sort(function(a,b){return a.width>b.width})
+        var data = new Int16Array(lines.length*4)
+        for(var i=0;i<lines.length;++i)
+        {
+            var line=lines[i];
+            data[i*4]=line.start[0];
+            data[i*4+1]=line.start[1];
+            data[i*4+2]=line.end[0];
+            data[i*4+3]=line.end[1];
+        }
+        console.log(data)
+        var blob=new Blob([data]);
+        downloadFile("barna.bin",blob)
+        e.preventDefault();
+    }
+    if(e.code == "Backspace")
+        lines.pop()
+    if(e.code == "Delete" && selected_line){
+        var index=lines.indexOf(selected_line);
+        lines.splice(index,1);
+        selected_line=0;
+    }
+    if(last_line)
+    {
+        if(e.code == "KeyR")
+        {
+            var t=last_line.start;
+            last_line.start=last_line.end;
+            last_line.end=t;
+        }
+        if(e.code == "KeyO")
+            last_line.width++;
+        if(e.code == "KeyP")
+            last_line.width--;
+    }
+}
+
+function downloadFile( filename, data, dataType )
+{
+	if(!dataType)
+	{
+		if(data.constructor === String )
+			dataType = 'text/plain';
+		else
+			dataType = 'application/octet-stream';
+	}
+
+	var file = null;
+	if(data.constructor !== File && data.constructor !== Blob)
+		file = new Blob( [ data ], {type : dataType});
+	else
+		file = data;
+	var url = URL.createObjectURL( file );
+	var element = document.createElement("a");
+	element.setAttribute('href', url);
+	element.setAttribute('download', filename );
+	element.style.display = 'none';
+	document.body.appendChild(element);
+	element.click();
+	document.body.removeChild(element);
+}
+
+lines=[{"width":1,"start":[1389,629],"end":[1811,844]},{"width":3,"start":[1488,493],"end":[1655,325]},{"width":3,"start":[1653,325],"end":[1708,186]},{"width":3,"start":[1708,185],"end":[2011,2]},{"width":1,"start":[672,238],"end":[722,116]},{"width":1,"start":[722,116],"end":[841,96]},{"width":1,"start":[848,98],"end":[936,120]},{"width":1,"start":[936,120],"end":[1002,170]},{"width":1,"start":[1002,170],"end":[1053,165]},{"width":1,"start":[1053,165],"end":[1123,188]},{"width":1,"start":[1123,188],"end":[1251,195]},{"width":1,"start":[1251,195],"end":[1362,253]},{"width":1,"start":[1362,253],"end":[1564,203]},{"width":1,"start":[583,454],"end":[687,365]},{"width":1,"start":[687,365],"end":[768,311]},{"width":1,"start":[772,317],"end":[692,368]},{"width":1,"start":[692,368],"end":[588,458]},{"width":1,"start":[773,317],"end":[773,803]},{"width":1,"start":[656,488],"end":[1572,494]},{"width":1,"start":[606,227],"end":[585,446]},{"width":2,"start":[584,446],"end":[585,607]},{"width":3,"start":[586,610],"end":[1119,611]},{"width":1,"start":[0,604],"end":[571,606]},{"width":1,"start":[572,612],"end":[1,613]},{"width":3,"start":[583,614],"end":[844,886]},{"width":3,"start":[200,928],"end":[322,522]},{"width":0,"start":[322,522],"end":[489,229]},{"width":2,"start":[489,229],"end":[534,190]},{"width":2,"start":[162,3],"end":[930,390]},{"width":3,"start":[1143,611],"end":[1322,613]},{"width":1,"start":[1387,611],"end":[1912,620]},{"width":1,"start":[1127,344],"end":[1129,491]},{"width":1,"start":[1137,490],"end":[1135,342]},{"width":3,"start":[1131,491],"end":[1128,705]},{"width":1,"start":[585,509],"end":[1745,518]},{"width":3,"start":[1130,537],"end":[586,533]},{"width":1,"start":[1434,541],"end":[1893,543]},{"width":1,"start":[632,559],"end":[1413,562]},{"width":1,"start":[1297,586],"end":[582,583]},{"width":1,"start":[1228,270],"end":[1222,917]},{"width":2,"start":[1244,920],"end":[1245,735]},{"width":1,"start":[1203,777],"end":[1342,639]},{"width":1,"start":[1342,632],"end":[1199,776]},{"width":1,"start":[1270,777],"end":[1109,778]},{"width":1,"start":[1106,778],"end":[1106,864]},{"width":1,"start":[1106,864],"end":[1126,893]},{"width":1,"start":[1125,893],"end":[1168,905]},{"width":1,"start":[1168,905],"end":[1224,891]},{"width":1,"start":[1224,891],"end":[1394,879]},{"width":1,"start":[1394,879],"end":[1409,868]},{"width":2,"start":[1409,868],"end":[1693,863]},{"width":1,"start":[770,308],"end":[1347,361]},{"width":1,"start":[1037,369],"end":[1607,375]},{"width":1,"start":[590,389],"end":[920,393]},{"width":1,"start":[917,319],"end":[918,650]},{"width":1,"start":[892,620],"end":[1128,701]},{"width":1,"start":[1123,711],"end":[1032,675]},{"width":1,"start":[603,633],"end":[859,637]},{"width":1,"start":[827,660],"end":[631,658]},{"width":1,"start":[619,682],"end":[799,682]},{"width":1,"start":[773,705],"end":[675,705]},{"width":1,"start":[658,367],"end":[656,687]},{"width":1,"start":[679,707],"end":[680,390]},{"width":1,"start":[703,368],"end":[701,734]},{"width":1,"start":[726,756],"end":[726,346]},{"width":1,"start":[752,444],"end":[752,787]},{"width":1,"start":[585,463],"end":[1457,472]},{"width":1,"start":[1424,444],"end":[614,444]},{"width":3,"start":[986,382],"end":[975,677]},{"width":1,"start":[1224,800],"end":[1962,808]},{"width":1,"start":[800,306],"end":[799,682]},{"width":1,"start":[821,664],"end":[824,312]},{"width":1,"start":[833,98],"end":[828,313]},{"width":1,"start":[845,97],"end":[848,317]},{"width":1,"start":[848,315],"end":[845,647]},{"width":1,"start":[871,628],"end":[871,316]},{"width":1,"start":[634,416],"end":[727,417]},{"width":1,"start":[774,416],"end":[950,417]},{"width":1,"start":[981,417],"end":[1435,419]},{"width":1,"start":[1375,443],"end":[1540,375]},{"width":1,"start":[1279,272],"end":[1268,918]},{"width":1,"start":[1290,919],"end":[1304,283]},{"width":1,"start":[1326,288],"end":[1319,918]},{"width":1,"start":[1342,919],"end":[1344,629]},{"width":1,"start":[1349,263],"end":[1344,562]},{"width":1,"start":[1367,560],"end":[1369,372]},{"width":1,"start":[1395,372],"end":[1386,922]},{"width":1,"start":[1557,396],"end":[1110,395]},{"width":1,"start":[1109,340],"end":[1105,693]},{"width":1,"start":[1081,684],"end":[1624,688]},{"width":1,"start":[1013,416],"end":[1009,869]},{"width":1,"start":[1035,660],"end":[1035,417]},{"width":1,"start":[946,397],"end":[950,641]},{"width":1,"start":[955,641],"end":[950,399]},{"width":1,"start":[894,392],"end":[894,560]},{"width":1,"start":[895,525],"end":[883,535]},{"width":1,"start":[883,535],"end":[894,546]},{"width":1,"start":[894,546],"end":[906,536]},{"width":1,"start":[906,536],"end":[895,525]},{"width":1,"start":[931,391],"end":[955,270]},{"width":1,"start":[986,378],"end":[994,270]},{"width":1,"start":[994,270],"end":[1015,222]},{"width":1,"start":[1015,219],"end":[1031,91]},{"width":1,"start":[1059,414],"end":[1059,697]},{"width":1,"start":[1082,698],"end":[1083,416]},{"width":1,"start":[1121,776],"end":[1122,710]},{"width":1,"start":[1137,709],"end":[1134,776]},{"width":1,"start":[1140,753],"end":[1809,759]},{"width":1,"start":[1136,729],"end":[1460,734]},{"width":1,"start":[976,635],"end":[1272,639]},{"width":1,"start":[1272,663],"end":[1011,660]},{"width":1,"start":[1157,344],"end":[1151,775]},{"width":1,"start":[1175,775],"end":[1179,344]},{"width":1,"start":[1204,347],"end":[1200,674]},{"width":1,"start":[1136,710],"end":[1321,618]},{"width":1,"start":[1414,611],"end":[1411,870]},{"width":1,"start":[1221,826],"end":[1670,831]},{"width":1,"start":[1534,324],"end":[1531,893]},{"width":1,"start":[1598,892],"end":[1602,518]},{"width":1,"start":[1479,852],"end":[1222,851]},{"width":1,"start":[1273,709],"end":[1436,710]},{"width":1,"start":[1436,649],"end":[1435,866]},{"width":1,"start":[1256,259],"end":[1252,470]},{"width":1,"start":[1251,514],"end":[1249,685]},{"width":2,"start":[1253,468],"end":[1348,372]},{"width":1,"start":[633,462],"end":[631,657]},{"width":3,"start":[572,600],"end":[181,185]},{"width":1,"start":[844,890],"end":[831,907]},{"width":1,"start":[831,907],"end":[849,919]},{"width":1,"start":[848,920],"end":[860,903]},{"width":1,"start":[860,903],"end":[845,890]},{"width":3,"start":[860,902],"end":[1105,846]},{"width":1,"start":[1065,901],"end":[998,1019]},{"width":1,"start":[998,1019],"end":[872,1111]},{"width":1,"start":[1024,974],"end":[1078,1003]},{"width":1,"start":[1078,1003],"end":[1198,961]},{"width":1,"start":[1198,961],"end":[1199,929]},{"width":1,"start":[1009,869],"end":[1017,887]},{"width":3,"start":[1017,886],"end":[1197,922]},{"width":3,"start":[1196,923],"end":[1504,923]},{"width":1,"start":[1365,662],"end":[1363,921]},{"width":1,"start":[1322,663],"end":[1415,663]},{"width":1,"start":[1461,612],"end":[1460,866]},{"width":1,"start":[1174,181],"end":[1145,342]},{"width":1,"start":[1146,331],"end":[1257,259]},{"width":3,"start":[1198,192],"end":[1240,227]},{"width":2,"start":[1240,227],"end":[1255,259]},{"width":2,"start":[1254,259],"end":[1347,297]},{"width":2,"start":[1349,298],"end":[1456,294]},{"width":2,"start":[1558,228],"end":[1668,120]},{"width":1,"start":[1532,12],"end":[1832,340]},{"width":2,"start":[1669,119],"end":[1723,108]},{"width":2,"start":[1723,108],"end":[1819,60]},{"width":2,"start":[1821,60],"end":[1924,52]},{"width":1,"start":[1119,610],"end":[1129,601]},{"width":1,"start":[1130,601],"end":[1142,611]},{"width":1,"start":[1144,611],"end":[1129,624]},{"width":1,"start":[1129,624],"end":[1117,610]},{"width":1,"start":[657,45],"end":[798,193]},{"width":1,"start":[798,193],"end":[925,226]},{"width":1,"start":[925,226],"end":[956,270]},{"width":1,"start":[1391,587],"end":[1601,474]},{"width":1,"start":[1403,609],"end":[1533,548]},{"width":1,"start":[1199,776],"end":[1199,731]},{"width":1,"start":[1293,774],"end":[1555,713]},{"width":1,"start":[892,611],"end":[939,682]},{"width":1,"start":[939,682],"end":[1011,671]},{"width":1,"start":[939,681],"end":[877,899]},{"width":1,"start":[882,897],"end":[955,641]},{"width":1,"start":[912,772],"end":[773,705]},{"width":1,"start":[683,842],"end":[902,814]},{"width":1,"start":[885,886],"end":[843,821]},{"width":1,"start":[676,728],"end":[773,728]},{"width":1,"start":[772,752],"end":[717,752]},{"width":1,"start":[739,776],"end":[774,777]},{"width":1,"start":[821,664],"end":[892,611]},{"width":1,"start":[1745,517],"end":[1740,893]},{"width":1,"start":[1670,890],"end":[1674,577]},{"width":1,"start":[1460,638],"end":[1804,640]},{"width":1,"start":[1600,697],"end":[1837,641]},{"width":1,"start":[1031,959],"end":[1094,992]},{"width":1,"start":[1094,992],"end":[1135,923]},{"width":1,"start":[1124,940],"end":[1061,907]},{"width":1,"start":[1056,917],"end":[1120,950]},{"width":1,"start":[1116,913],"end":[1079,983]},{"width":1,"start":[1036,1020],"end":[1101,911]},{"width":1,"start":[1090,907],"end":[1053,972]},{"width":1,"start":[1049,930],"end":[1093,957]},{"width":1,"start":[1015,991],"end":[1054,1012]},{"width":1,"start":[1054,1012],"end":[1063,995]},{"width":1,"start":[1006,1005],"end":[1035,1019]},{"width":1,"start":[980,794],"end":[1106,792]},{"width":2,"start":[585,468],"end":[814,535]},{"width":1,"start":[1389,623],"end":[1817,842]},{"width":1,"start":[1322,593],"end":[931,393]},{"width":1,"start":[931,387],"end":[1322,588]},{"width":1,"start":[1671,781],"end":[1293,780]},{"width":2,"start":[1692,863],"end":[2045,801]},{"width":1,"start":[1418,295],"end":[1417,420]},{"width":1,"start":[951,285],"end":[1182,308]},{"width":1,"start":[1120,340],"end":[1145,189]},{"width":1,"start":[1053,166],"end":[1040,333]},{"width":1,"start":[871,368],"end":[692,369]},{"width":2,"start":[308,321],"end":[456,342]},{"width":2,"start":[457,342],"end":[591,390]},{"width":2,"start":[259,268],"end":[705,310]},{"width":2,"start":[620,163],"end":[773,391]},{"width":1,"start":[626,256],"end":[608,533]},{"width":1,"start":[1386,902],"end":[1530,892]},{"width":1,"start":[1530,892],"end":[1774,893]},{"width":1,"start":[1806,842],"end":[1813,386]},{"width":1,"start":[1820,385],"end":[1814,843]},{"width":1,"start":[1672,711],"end":[2009,714]},{"width":1,"start":[1719,667],"end":[1718,783]},{"width":1,"start":[1718,783],"end":[1808,782]},{"width":1,"start":[1623,734],"end":[1824,734]},{"width":1,"start":[1624,664],"end":[1621,840]},{"width":1,"start":[1554,712],"end":[1551,892]},{"width":1,"start":[1574,891],"end":[1577,542]},{"width":1,"start":[985,393],"end":[1109,404]},{"width":1,"start":[1006,415],"end":[1015,329]},{"width":1,"start":[975,302],"end":[1150,322]},{"width":1,"start":[1194,183],"end":[1171,309]},{"width":1,"start":[1044,278],"end":[1350,306]},{"width":1,"start":[1058,311],"end":[1092,96]},{"width":1,"start":[1049,204],"end":[1210,230]},{"width":1,"start":[1213,185],"end":[1195,347]},{"width":1,"start":[885,886],"end":[996,851]},{"width":1,"start":[797,193],"end":[789,319]},{"width":1,"start":[793,265],"end":[954,279]},{"width":1,"start":[879,214],"end":[871,318]},{"width":1,"start":[954,296],"end":[791,276]},{"width":1,"start":[792,253],"end":[971,254]},{"width":1,"start":[925,224],"end":[895,87]},{"width":1,"start":[895,87],"end":[928,5]},{"width":2,"start":[1609,168],"end":[1601,475]},{"width":2,"start":[1603,474],"end":[1748,317]},{"width":1,"start":[1447,412],"end":[1544,308]},{"width":1,"start":[1544,308],"end":[1566,192]},{"width":2,"start":[1558,228],"end":[1457,293]},{"width":3,"start":[1489,493],"end":[1391,585]},{"width":1,"start":[1130,536],"end":[1887,539]},{"width":3,"start":[552,679],"end":[575,614]},{"width":2,"start":[524,670],"end":[612,699]},{"width":1,"start":[628,660],"end":[589,754]},{"width":1,"start":[568,208],"end":[454,460]},{"width":1,"start":[520,270],"end":[711,301]},{"width":1,"start":[706,291],"end":[577,272]},{"width":1,"start":[657,366],"end":[672,239]},{"width":1,"start":[555,289],"end":[500,460]},{"width":1,"start":[372,337],"end":[589,410]},{"width":1,"start":[411,369],"end":[569,435]},{"width":1,"start":[1501,563],"end":[1810,565]},{"width":1,"start":[1659,588],"end":[1811,589]},{"width":1,"start":[1484,596],"end":[1483,730]},{"width":0,"start":[1168,344],"end":[1167,444]},{"width":1,"start":[843,821],"end":[842,722]},{"width":1,"start":[731,213],"end":[782,7]},{"width":1,"start":[657,137],"end":[744,160]},{"width":1,"start":[744,160],"end":[797,211]},{"width":1,"start":[733,203],"end":[833,99]},{"width":1,"start":[756,110],"end":[824,177]},{"width":1,"start":[811,184],"end":[753,125]},{"width":1,"start":[774,106],"end":[815,147]},{"width":1,"start":[815,147],"end":[899,172]},{"width":1,"start":[811,183],"end":[919,196]},{"width":1,"start":[831,711],"end":[928,718]},{"width":1,"start":[841,722],"end":[799,683]},{"width":1,"start":[820,724],"end":[923,735]},{"width":1,"start":[851,727],"end":[859,636]},{"width":1,"start":[1048,223],"end":[1206,249]},{"width":1,"start":[1047,246],"end":[1229,270]},{"width":1,"start":[1027,259],"end":[1158,274]},{"width":1,"start":[1088,337],"end":[1093,266]},{"width":1,"start":[1126,188],"end":[1113,270]},{"width":1,"start":[1135,188],"end":[1112,340]},{"width":1,"start":[1014,416],"end":[1024,321]},{"width":1,"start":[1007,320],"end":[1145,333]},{"width":1,"start":[612,194],"end":[764,270]},{"width":1,"start":[764,270],"end":[773,308]},{"width":1,"start":[1006,1022],"end":[1062,920]},{"width":1,"start":[1010,1025],"end":[1077,904]},{"width":1,"start":[1016,1024],"end":[1052,958]}]
+
+loop();
+</script>
