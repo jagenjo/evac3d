@@ -1,0 +1,30 @@
+<style>body {background-color:#222; font: 14px Consolas; color:#DDD;} .text { transition: all 2s;}</style>
+<body><div id="text" class="text"></div><div id="chars" style="position:fixed;top:300px;left:800px;font:80px Consolas;text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000; "></div></body>
+<script>
+    var n=0;
+    var elem=null;
+    function addChar()
+    {
+        var j = Math.floor(n/1000);
+        if(!elem || elem.j != j){
+            elem = document.createElement("span");
+            elem.style.cssText="word-wrap: break-word; color: hsl("+(360*(j/13))+", 100%, 60%);"
+            elem.j = j;
+            text.appendChild(elem);
+        }
+        for(var i=0;i<10;++i)
+            elem.innerHTML += String.fromCharCode(65+(n++%28));
+        chars.innerText=n;
+        if(n<13000)
+            setTimeout(addChar,0)
+        else
+            ending()
+    }
+
+    function ending()
+    {
+        text.style.opacity="0.5"
+    }
+
+    document.body.onkeypress=addChar;
+</script>
